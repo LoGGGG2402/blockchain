@@ -149,6 +149,20 @@ template CheckBitLength(b) {
     signal output out;
 
     // TODO
+
+    // calculate 2^b
+    var two_pow_b = 1;
+    for (var i = 0; i < b; i++) {
+        two_pow_b *= 2;
+    }
+
+    // check if `in` is less than 2^b
+    component less_than = LessThan(b);
+    less_than.in[0] <== in;
+    less_than.in[1] <== two_pow_b;
+
+    // assert that `in` is at most `b` bits long
+    out <== less_than.out;
 }
 
 /*
@@ -198,6 +212,18 @@ template RightShift(b, shift) {
     signal output y;
 
     // TODO
+
+    // num2bits
+    component n2b = Num2Bits(b);
+    n2b.in <== x;
+
+    // right shift
+    // bits2num
+    component b2n = Bits2Num(b - shift);
+    for (var i = 0; i < b - shift; i++) {
+        b2n.bits[i] <== n2b.bits[i + shift];
+    }
+    y <== b2n.out;
 }
 
 /*
@@ -260,6 +286,35 @@ template LeftShift(shift_bound) {
     signal output y;
 
     // TODO
+    // condition for shift_bound
+    var setOne = shift;
+    // is Set bit is 1 before
+    var isSet = 0;
+
+    // multiply by 2 while cond is true
+    component bits2num = Bits2Num(shift_bound);
+    component iz[shift_bound];
+    
+    for (var i = 0 ; i < shift_bound ; i++) {
+        iz[i] = IsZero();
+        iz[i].in <== setOne;
+        setOne -= (1 - iz[i].out);
+        bits2num.bits[i] <== iz[i].out * (1-isSet);
+        isSet = (0 + iz[i].out);
+    }
+
+    y <== bits2num.out * x;
+
+    // shift bound checks
+    component is_shift_within_bound = LessThan(shift_bound);
+    is_shift_within_bound.in[0] <== shift;
+    is_shift_within_bound.in[1] <== shift_bound;
+
+    component or = OR();
+    or.a <== is_shift_within_bound.out;
+    or.b <== skip_checks;
+
+    or.out === 1;
 }
 
 /*
@@ -275,6 +330,28 @@ template MSNZB(b) {
     signal output one_hot[b];
 
     // TODO
+
+    // num2bits
+    component n2b = Num2Bits(b);
+    n2b.in <== in;
+
+    // find the MSNZB
+    var isFind = 0;
+    for (var i = b-1; i >= 0; i--) {
+        one_hot[i] <== n2b.bits[i] * (1 - isFind);
+        isFind = isFind + one_hot[i];
+    }
+    
+
+    // assert that `in` is non-zero
+    component is_zero = IsZero();
+    is_zero.in <== in;
+
+    component or = OR();
+    or.a <== (1 - is_zero.out);
+    or.b <== skip_checks;
+
+    or.out === 1;
 }
 
 /*
@@ -293,6 +370,8 @@ template Normalize(k, p, P) {
     assert(P > p);
 
     // TODO
+
+
 }
 
 /*
