@@ -370,8 +370,24 @@ template Normalize(k, p, P) {
     assert(P > p);
 
     // TODO
+    component msnzb = MSNZB(P+1);
+    msnzb.in <== m;
+    msnzb.skip_checks <== skip_checks;
 
+    // compute the number of leading zeros
+    var lz = 0;
+    for (var i = 0; i < P+1; i++) {
+        lz += i * msnzb.one_hot[i];
+    }
 
+    // compute the new exponent and mantissa
+    component left_shift = LeftShift(P+1);
+    left_shift.x <== m;
+    left_shift.shift <== P - lz;
+    left_shift.skip_checks <== skip_checks;
+
+    e_out <== e + lz - p;
+    m_out <== left_shift.y;
 }
 
 /*
