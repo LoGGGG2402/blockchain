@@ -131,7 +131,7 @@ template LessThan(n) {
 
     component n2b = Num2Bits(n+1);
 
-    n2b.in <== in[0]+ (1<<n) - in[1];
+    n2b.in <== in[0] + (1<<n) - in[1];
 
     out <== 1-n2b.bits[n];
 }
@@ -150,19 +150,24 @@ template CheckBitLength(b) {
 
     // TODO
 
-    // calculate 2^b
-    var two_pow_b = 1;
+    // num2bits
+    signal output bits[b];
+
     for (var i = 0; i < b; i++) {
-        two_pow_b *= 2;
+        bits[i] <-- (in >> i) & 1;
+        bits[i] * (1 - bits[i]) === 0;
+    }
+    var sum_of_bits = 0;
+    for (var i = 0; i < b; i++) {
+        sum_of_bits += (2 ** i) * bits[i];
     }
 
-    // check if `in` is less than 2^b
-    component less_than = LessThan(b);
-    less_than.in[0] <== in;
-    less_than.in[1] <== two_pow_b;
+    // check if the sum of bits is equal to the input
+    component is_equal = IsEqual();
+    is_equal.in[0] <== sum_of_bits;
+    is_equal.in[1] <== in;
 
-    // assert that `in` is at most `b` bits long
-    out <== less_than.out;
+    out <== is_equal.out;
 }
 
 /*
@@ -404,4 +409,88 @@ template FloatAdd(k, p) {
     signal output m_out;
 
     // TODO
+
+    // check that the inputs are well-formed
+    component cwf1 = CheckWellFormedness(k, p);
+    cwf1.e <== e[0];
+    cwf1.m <== m[0];
+    component cwf2 = CheckWellFormedness(k, p);
+    cwf2.e <== e[1];
+    cwf2.m <== m[1];
+    
+
+    // Calculate magnitudes for comparison
+    signal mgn0 <== (e[0] * 2 ** (p + 1)) + m[0];
+    signal mgn1 <== (e[1] * 2 ** (p + 1)) + m[1];
+
+    // Compare magnitudes
+    component compare = LessThan(k + p + 1);
+    compare.in[0] <== mgn1;
+    compare.in[1] <== mgn0;
+
+    // Switch components to arrange numbers by magnitude
+    signal alpha_e, alpha_m, beta_e, beta_m;
+    component switcher_e = Switcher();
+    component switcher_m = Switcher();
+    switcher_e.sel <== compare.out;
+    switcher_m.sel <== compare.out;
+    switcher_e.L <== e[0];
+    switcher_e.R <== e[1];
+    switcher_m.L <== m[0];
+    switcher_m.R <== m[1];
+    alpha_e <== switcher_e.outR;
+    beta_e <== switcher_e.outL;
+    alpha_m <== switcher_m.outR;
+    beta_m <== switcher_m.outL;
+
+    // Compute the difference in exponents
+    signal diff <== alpha_e - beta_e;
+
+    // Check if diff > p + 1 or if alpha_e is zero
+    component check1 = LessThan(k);
+    check1.in[0] <== p + 1;
+    check1.in[1] <== diff;
+
+    component check2 = IsZero();
+    check2.in <== alpha_e;
+
+    component both_checks = OR();
+    both_checks.a <== check1.out;
+    both_checks.b <== check2.out;
+
+    // Perform left shift on the mantissa based on the exponent difference
+    component alpha_ls = LeftShift(p + 2);
+    alpha_ls.x <== alpha_m;
+    alpha_ls.shift <== diff;
+    alpha_ls.skip_checks <== 1;
+
+    // Unnormalized mantissa and exponent
+    signal unnorm_m <== alpha_ls.y + beta_m;
+    signal unnorm_e <== beta_e;
+
+    // Normalize the result
+    component normalize = Normalize(k, p, 2 * p + 1);
+    normalize.e <== unnorm_e;
+    normalize.m <== unnorm_m;
+    normalize.skip_checks <== 1;
+
+    // Round the normalized result
+    component round = RoundAndCheck(k, p, 2 * p + 1);
+    round.e <== normalize.e_out;
+    round.m <== normalize.m_out;
+
+    // Select the final output based on the check results
+    component if_else_e = IfThenElse();
+    if_else_e.cond <== both_checks.out;
+    if_else_e.L <== alpha_e;
+    if_else_e.R <== round.e_out;
+
+    component if_else_m = IfThenElse();
+    if_else_m.cond <== both_checks.out;
+    if_else_m.L <== alpha_m;
+    if_else_m.R <== round.m_out;
+
+    // Assign the final outputs
+    e_out <== if_else_e.out;
+    m_out <== if_else_m.out;
 }
